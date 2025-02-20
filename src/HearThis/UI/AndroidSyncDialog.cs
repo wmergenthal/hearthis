@@ -8,12 +8,14 @@
 #endregion
 // --------------------------------------------------------------------------------------------
 using System;
+using System.Diagnostics;
 using System.Drawing;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
 using System.Windows.Forms;
+//using NDesk.DBus;
 using SIL.Reporting;
 using SIL.Windows.Forms.Progress;
 using ZXing;
@@ -63,6 +65,7 @@ namespace HearThis.UI
 		public void SetOurIpAddress(string content)
 		{
 			_ourIpAddress = content;
+			Debug.WriteLine("WM, AndroidSyncDialog.SetOurIpAddress, _ourIpAddress = " + _ourIpAddress);
 			var writer = new BarcodeWriter
 			{
 				Format = BarcodeFormat.QR_CODE,
@@ -87,11 +90,16 @@ namespace HearThis.UI
 			else if (_ourIpAddress != null)
 			{
 				// We expect it to be on the same network, so the first three groups should be the same
+				//
+				// WM: don't assume that first 3 octets of HT address will match first 3 octets of HTA
+				// address. We could be on a bigger-than-8-bit subnet. But, I don't see comparisons being
+				// done here so perhaps no harm...
 				int index = _ourIpAddress.LastIndexOf(".", StringComparison.Ordinal);
 				if (index > 0)
 				{
 					_ipAddressBox.Text = _ourIpAddress.Substring(0, index + 1) + "???";
 				}
+				Debug.WriteLine("WM, AndroidSyncDialog.ShowAndroidIpAddress, _ipAddressBox.Text = " + _ipAddressBox.Text);
 			}
 		}
 

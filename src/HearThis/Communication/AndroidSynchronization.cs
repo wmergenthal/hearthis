@@ -21,6 +21,7 @@ using DesktopAnalytics;
 using L10NSharp;
 using SIL.Reporting;
 using static System.String;
+using System.Diagnostics;
 
 namespace HearThis.Communication
 {
@@ -29,7 +30,9 @@ namespace HearThis.Communication
 	/// </summary>
 	public static class AndroidSynchronization
 	{
+		private static string LocalIp ="";
 		private const string kHearThisAndroidProductName = "HearThis Android";
+
 		public static void DoAndroidSync(Project project, Form parent)
 		{
 			if (!project.IsRealProject)
@@ -42,13 +45,37 @@ namespace HearThis.Communication
 				return;
 			}
 			var dlg = new AndroidSyncDialog();
-			var address = GetNetworkAddress(parent);
 
-			if (address == null)
+			// WM, debug only!
+			// The local IP determination logic does consider network interfaces but it does not zero in
+			// on the correct one, at least for my Windows 10 laptop. So before anything else, run the
+			// Bloom debug code that lists all network interfaces along with significant attributes of
+			// each, including IP addresses (an interface can have several).
+			showNetworkInterfaces();
+
+			// To find out what local IP address we should present to Android devices, learn
+			// what IP address *currently* supports internet traffic. Then use that address.
+			LocalIp = GetIpAddressOfNetworkIface();
+			if (LocalIp.Length == 0)
+			{
+				Debug.WriteLine("AndroidSync.DoAndroidSync, ERROR: can't get local IP address, exiting");
 				return;
+			}
 
-			dlg.SetOurIpAddress(address.ToString());
+			// WM, remove --
+			//Debug.WriteLine("WM, AndroidSync.DoAndroidSync, calling GetNetworkAddress(parent)");
+			//var address = GetNetworkAddress(parent);
+			//Debug.WriteLine("WM, AndroidSync.DoAndroidSync, parent address (IPv4) = " + address.MapToIPv4());
+
+			//if (address == null)
+			//	return;
+
+			//dlg.SetOurIpAddress(address.ToString());
+			dlg.SetOurIpAddress(LocalIp);
+
+			//Debug.WriteLine("WM, AndroidSync.DoAndroidSync, calling ShowAndroidIpAddress()");
 			dlg.ShowAndroidIpAddress(); // AFTER we set our IP address, which may be used to provide a default
+			//Debug.WriteLine("WM, AndroidSync.DoAndroidSync, did ShowAndroidIpAddress()");
 			dlg.GotSync += (o, args) =>
 			{
 				try
@@ -86,9 +113,11 @@ namespace HearThis.Communication
 					merger.Merge(project.StylesToSkipByDefault, dlg.ProgressBox);
 					//Update info.txt on Android
 					var infoFilePath = project.GetProjectRecordingStatusInfoFilePath();
+					Debug.WriteLine("WM, AndroidSync.DoAndroidSync, infoFilePath = " + infoFilePath);
 					RobustFile.WriteAllText(infoFilePath, project.GetProjectRecordingStatusInfoFileContent());
 					var theirInfoTxtPath = project.Name + "/" + Project.InfoTxtFileName;
 					theirLink.PutFile(theirInfoTxtPath, File.ReadAllBytes(infoFilePath));
+					Debug.WriteLine("WM, AndroidSync.DoAndroidSync, sync complete");
 					theirLink.SendNotification("syncCompleted");
 					dlg.ProgressBox.WriteMessage("Sync completed successfully");
 					//dlg.Close();
@@ -96,6 +125,7 @@ namespace HearThis.Communication
 				catch (WebException ex)
 				{
 					string msg;
+					Debug.WriteLine("WM, AndroidSync.DoAndroidSync, WebException = " + ex.Status);
 					switch (ex.Status)
 					{
 						case WebExceptionStatus.NameResolutionFailure:
@@ -138,53 +168,136 @@ namespace HearThis.Communication
 			dlg.Show(parent);
 		}
 
-		private static IPAddress GetNetworkAddress(Form parent)
+		//private static IPAddress GetNetworkAddress(Form parent)
+		//{
+		//	// Retrieve all network interfaces
+		//	var allOperationalNetworks = NetworkInterface.GetAllNetworkInterfaces()
+		//		.Where(ni => ni.OperationalStatus == OperationalStatus.Up).ToArray();
+		//
+		//	if (!allOperationalNetworks.Any())
+		//	{
+		//		MessageBox.Show(parent, LocalizationManager.GetString("AndroidSynchronization.NetworkingRequired",
+		//			"Android synchronization requires your computer to have networking enabled."),
+		//			Program.kProduct);
+		//		return null;
+		//	}
+		//
+		//	(NetworkInterface Network, IPAddress Address)? preferred = null;
+		//
+		//	// WM, debug only!
+		//	Debug.WriteLine("WM, AndroidSync.IPAddress, got network interfaces, now assess");
+		//	foreach (var network in allOperationalNetworks)
+		//	{
+		//		var ipAddress = network.GetIPProperties().UnicastAddresses.Select(ip => ip.Address)
+		//			.FirstOrDefault(a => a.AddressFamily == AddressFamily.InterNetwork);
+		//		Debug.WriteLine("  checking " + ipAddress);
+		//
+		//		if (ipAddress != null)
+		//		{
+		//			Debug.WriteLine("    NetworkInterfaceType = " + network.NetworkInterfaceType);
+		//			if (network.NetworkInterfaceType == NetworkInterfaceType.Wireless80211)
+		//			{
+		//				preferred = (network, ipAddress);
+		//				Debug.WriteLine("  found WiFi interface at " + ipAddress + ", stop looking");
+		//				break;
+		//			}
+		//
+		//			if (preferred == null)
+		//			{
+		//				preferred = (network, ipAddress);
+		//			}
+		//		}
+		//	}
+		//
+		//	if (!preferred.HasValue)
+		//	{
+		//		Debug.WriteLine("WM, AndroidSync.IPAddress, WiFi interface has no IP address, bail");
+		//		MessageBox.Show(parent, LocalizationManager.GetString("AndroidSynchronization.NoInterNetworkIPAddress",
+		//			"Sorry, your network adapter has no InterNetwork IP address. If you do not know how to resolve this, please seek technical help.",
+		//			Program.kProduct));
+		//		return null;
+		//	}
+		//
+		//	Logger.WriteEvent("Found " +
+		//		$"{(preferred.Value.Network.NetworkInterfaceType == NetworkInterfaceType.Wireless80211 ? "a" : "only a wired")}" +
+		//		$" network for Android synchronization: {preferred.Value.Network.Description}.");
+		//
+		//	Debug.WriteLine("WM, AndroidSync.IPAddress, returning " + preferred.Value.Address.ToString());
+		//	return preferred.Value.Address;
+		//}
+
+		// We need *the* IP address of *this* (the local) machine. Since a machine running HearThis
+		// can have multiple IP addresses (mine has 11, a mix of both IPv4 and IPv6), we must carefully
+		// select the one that will actually be used by a network interface. Returning the first address
+		// found of type 'AddressFamily.InterNetwork' that is also "Up" is sometimes NOT correct. So,
+		// instead use this alternative function based on the post at
+		// https://stackoverflow.com/questions/6803073/get-local-ip-address/27376368#27376368
+		//
+		private static string GetIpAddressOfNetworkIface()
 		{
-			// Retrieve all network interfaces
-			var allOperationalNetworks = NetworkInterface.GetAllNetworkInterfaces()
-				.Where(ni => ni.OperationalStatus == OperationalStatus.Up).ToArray();
+			IPEndPoint endpoint;
+			Socket sock = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, 0);
+			sock.Connect("8.8.8.8", 65530); // Google's public DNS service
+			endpoint = sock.LocalEndPoint as IPEndPoint;
 
-			if (!allOperationalNetworks.Any())
+			// Reconstitute the following here:
+			//Logger.WriteEvent("Found " +
+			//	$"{(preferred.Value.Network.NetworkInterfaceType == NetworkInterfaceType.Wireless80211 ? "a" : "only a wired")}" +
+			//	$" network for Android synchronization: {preferred.Value.Network.Description}.");
+
+			Debug.WriteLine("WM, AndroidSync.GetIpAddressOfNetworkIface, returning " + endpoint.Address.ToString());
+			return endpoint.Address.ToString();
+		}
+
+		// WM, debug only! Ported from temporary Bloom dev code: broadcast_address_buildup_test_02.cs
+		// Unlike for BloomDesktop, we do not need to identify which network interface is being used
+		// because we are not going to be transmitting on it to share our local IP. The QR code does
+		// that instead.
+		//
+		private static void showNetworkInterfaces()
+		{
+			Debug.WriteLine("WM, AndroidSync.showNetworkInterfaces:");
+			int i = -1;
+
+			foreach (NetworkInterface nic in NetworkInterface.GetAllNetworkInterfaces())
 			{
-				MessageBox.Show(parent, LocalizationManager.GetString("AndroidSynchronization.NetworkingRequired",
-					"Android synchronization requires your computer to have networking enabled."),
-					Program.kProduct);
-				return null;
-			}
+				Debug.WriteLine("  ----------");
+				i++;  // doing it here lets an increment still follow a 'continue'
+				Debug.WriteLine("  nic[" + i + "].Name = " + nic.Name);
+				Debug.WriteLine("  nic[" + i + "].Id   = " + nic.Id);
+				Debug.WriteLine("  nic[" + i + "].Description = " + nic.Description);
+				Debug.WriteLine("  nic[" + i + "].NetworkInterfaceType = " + nic.NetworkInterfaceType);
+				Debug.WriteLine("  nic[" + i + "].OperationalStatus = " + nic.OperationalStatus);
+				Debug.WriteLine("  nic[" + i + "].Speed = " + nic.Speed);
 
-			(NetworkInterface Network, IPAddress Address)? preferred = null;
-
-			foreach (var network in allOperationalNetworks)
-			{
-				var ipAddress = network.GetIPProperties().UnicastAddresses.Select(ip => ip.Address)
-					.FirstOrDefault(a => a.AddressFamily == AddressFamily.InterNetwork);
-
-				if (ipAddress != null)
+				if (!nic.Supports(NetworkInterfaceComponent.IPv6))
 				{
-					if (network.NetworkInterfaceType == NetworkInterfaceType.Wireless80211)
-					{
-						preferred = (network, ipAddress);
-						break;
-					}
+					Debug.WriteLine("    does not support IPv6"); // on my machine only Wi-Fi has this
+				}
+				if (!nic.Supports(NetworkInterfaceComponent.IPv4))
+				{
+					Debug.WriteLine("    does not support IPv4");
+					continue;
+				}
 
-					if (preferred == null)
-						preferred = (network, ipAddress);
+				IPInterfaceProperties ipProps = nic.GetIPProperties();
+				IPv4InterfaceProperties ipPropsV4 = ipProps.GetIPv4Properties();
+				if (ipPropsV4 == null)
+				{
+					Debug.WriteLine("    IPv4 information not available");
+					continue;
+				}
+
+				// Show all IP addresses held by this network interface. Also show all
+				// IPv4 netmasks. Note that IPv4 netmasks contain all zeroes for IPv6
+				// addresses (which we don't use).
+				foreach (UnicastIPAddressInformation addr in ipProps.UnicastAddresses)
+				{
+					Debug.WriteLine("  nic[" + i + "], ipProps.addr.Address  = " + addr.Address.ToString());
+					Debug.WriteLine("  nic[" + i + "], ipProps.addr.IPv4Mask = " + addr.IPv4Mask);
 				}
 			}
-
-			if (!preferred.HasValue)
-			{
-				MessageBox.Show(parent, LocalizationManager.GetString("AndroidSynchronization.NoInterNetworkIPAddress",
-					"Sorry, your network adapter has no InterNetwork IP address. If you do not know how to resolve this, please seek technical help.",
-					Program.kProduct));
-				return null;
-			}
-
-			Logger.WriteEvent("Found " +
-				$"{(preferred.Value.Network.NetworkInterfaceType == NetworkInterfaceType.Wireless80211 ? "a" : "only a wired")}" +
-				$" network for Android synchronization: {preferred.Value.Network.Description}.");
-			
-			return preferred.Value.Address;
+			Debug.WriteLine("WM, AndroidSync.showNetworkInterfaces, finished");
 		}
 	}
 }
