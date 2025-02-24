@@ -15,7 +15,6 @@ using System.Net.Sockets;
 using System.Text;
 using System.Threading;
 using System.Windows.Forms;
-//using NDesk.DBus;
 using SIL.Reporting;
 using SIL.Windows.Forms.Progress;
 using ZXing;
