@@ -48,8 +48,8 @@ namespace HearThis.Communication
 			var dlg = new AndroidSyncDialog();
 
 			// WM, debug only
-			// The local IP determination logic does consider network interfaces but it does not zero in
-			// on the correct one, for my Windows 10 laptop.
+			// Current local IP determination logic does consider network interfaces but it does not zero
+			// in on the correct one, for my Windows 10 laptop.
 			// Instructive exercise: run debug code listing all network interfaces along with significant
 			// attributes of each, including IP addresses (an interface can have several).
 			//showNetworkInterfaces();
@@ -113,7 +113,6 @@ namespace HearThis.Communication
 				catch (WebException ex)
 				{
 					string msg;
-					Debug.WriteLine("WM, AndroidSync.DoAndroidSync, WebException = " + ex.Status);
 					switch (ex.Status)
 					{
 						case WebExceptionStatus.NameResolutionFailure:
@@ -190,7 +189,7 @@ namespace HearThis.Communication
 		//
 		private static void showNetworkInterfaces()
 		{
-			Debug.WriteLine("WM, AndroidSync.showNetworkInterfaces:");
+			Debug.WriteLine("AndroidSynchronization, showNetworkInterfaces:");
 			int i = -1;
 
 			foreach (NetworkInterface nic in NetworkInterface.GetAllNetworkInterfaces())
@@ -231,7 +230,7 @@ namespace HearThis.Communication
 					Debug.WriteLine("  nic[" + i + "], ipProps.addr.IPv4Mask = " + addr.IPv4Mask);
 				}
 			}
-			Debug.WriteLine("WM, AndroidSync.showNetworkInterfaces, finished");
+			Debug.WriteLine("AndroidSynchronization, showNetworkInterfaces: finished");
 		}
 	}
 }

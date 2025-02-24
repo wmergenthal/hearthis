@@ -64,7 +64,6 @@ namespace HearThis.UI
 		public void SetOurIpAddress(string content)
 		{
 			_ourIpAddress = content;
-			Debug.WriteLine("WM, AndroidSyncDialog.SetOurIpAddress, _ourIpAddress = " + _ourIpAddress);
 			var writer = new BarcodeWriter
 			{
 				Format = BarcodeFormat.QR_CODE,
@@ -90,15 +89,16 @@ namespace HearThis.UI
 			{
 				// We expect it to be on the same network, so the first three groups should be the same
 				//
-				// WM: don't assume that first 3 octets of HT address will match first 3 octets of HTA
-				// address. We could be on a bigger-than-8-bit subnet. But, I don't see comparisons being
-				// done here so perhaps no harm...
+				// WM: No! We should not assume that the first 3 octets of HT address will match the
+				// first 3 octets of HTA address. It may be that only the first 2 octets match, or 1.
+				// My opinion: we should not bake any assumptions into what is presented to the user.
+				// If we still want to allow them to enter Android's IP, have them enter the whole thing.
+				// Pre-filling a portion of it like below could end up confusing more than helping.
 				int index = _ourIpAddress.LastIndexOf(".", StringComparison.Ordinal);
 				if (index > 0)
 				{
 					_ipAddressBox.Text = _ourIpAddress.Substring(0, index + 1) + "???";
 				}
-				Debug.WriteLine("WM, AndroidSyncDialog.ShowAndroidIpAddress, _ipAddressBox.Text = " + _ipAddressBox.Text);
 			}
 		}
 
