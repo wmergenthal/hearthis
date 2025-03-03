@@ -48,10 +48,12 @@ namespace HearThis.Communication
 			var dlg = new AndroidSyncDialog();
 
 			// WM, debug only
-			// Current local IP determination logic does consider network interfaces but it does not zero
-			// in on the correct one, for my Windows 10 laptop.
-			// Instructive exercise: run debug code listing all network interfaces along with significant
-			// attributes of each, including IP addresses (an interface can have several).
+			// Current local IP determination logic does consider network interfaces but it
+			// does not settle on the correct one, for my Windows 10 laptop.
+			//
+			// Instructive exercise: run this debug function, showNetworkInterfaces(), which
+			// lists all network interfaces along with significant attributes of each including
+			// IP addresses (an interface can have several).
 			//showNetworkInterfaces();
 
 			// To find out what local IP address we should present to Android devices, learn
@@ -62,7 +64,6 @@ namespace HearThis.Communication
 				Debug.WriteLine("AndroidSynchronization: ERROR, can't get local IP address, exiting");
 				return;
 			}
-			Debug.WriteLine("AndroidSynchronization: using local IP address = " + localIp);
 
 			dlg.SetOurIpAddress(localIp);
 			dlg.ShowAndroidIpAddress(); // AFTER we set our IP address, which may be used to provide a default
@@ -169,8 +170,8 @@ namespace HearThis.Communication
 			endpoint = sock.LocalEndPoint as IPEndPoint;
 
 			// WM: if it is truly important to log the "Description" field of the chosen network
-			//     interface, we can add code to find which one matches the chosen local IP. But
-			//     I would think it is more valuable to simply log the local IP itself.
+			//     interface, we would add code to find which interface matches the local IP. But
+			//     I think it is more valuable to simply log the local IP itself.
 
 			//	Logger.WriteEvent("Found " +
 			//		$"{(preferred.Value.Network.NetworkInterfaceType == NetworkInterfaceType.Wireless80211 ? "a" : "only a wired")}" +
