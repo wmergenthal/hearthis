@@ -77,7 +77,7 @@ namespace HearThis.UI
 			var qrBitmap = new Bitmap(matrix);
 			qrBox.Image = qrBitmap;
 
-			Debug.WriteLine("AndroidSyncDialog: HearThis local IP addr = " + _ourIpAddress);
+			Debug.WriteLine("AndroidSyncDialog.SetOurIpAddress: HearThis local IP addr = " + _ourIpAddress);
 		}
 
 		public void ShowAndroidIpAddress()
@@ -112,7 +112,7 @@ namespace HearThis.UI
 				AndroidIpAddress = Encoding.UTF8.GetString(args.data);
 				Invoke(new Action(HandleGotIpAddress));
 
-				Debug.WriteLine("AndroidSyncDialog: Android remote IP addr = " + AndroidIpAddress);
+				Debug.WriteLine("AndroidSyncDialog.OnShown: Android remote IP addr = " + AndroidIpAddress);
 			};
 			int index = _ipAddressBox.Text.LastIndexOf(".", StringComparison.Ordinal);
 			_ipAddressBox.SelectionStart = index + 1;
