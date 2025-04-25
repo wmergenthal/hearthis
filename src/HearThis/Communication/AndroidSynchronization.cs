@@ -73,7 +73,6 @@ namespace HearThis.Communication
 		private class InterfaceInfo
 		{
 			public string IpAddr  { get; set; }
-			//public string NetMask { get; set; }  // Bloom needs this, HearThis does not
 			public string Type    { get; set; }
 			public int Metric     { get; set; }
 		}
@@ -96,25 +95,18 @@ namespace HearThis.Communication
 			}
 			var dlg = new AndroidSyncDialog();
 
-			// WM, DEBUG ONLY
-			// Current local IP determination logic does consider network interfaces but it
-			// does not always settle on the correct one. My Windows 10 laptop is an example.
-			//
-			// Instructive exercise: uncomment and run this debug function, ShowNetworkInterfaces(),
-			// to list all network interfaces along with significant attributes of each including IP
-			// addresses (an interface can have several).
-			ShowNetworkInterfaces();
-			// WM, END DEBUG
-
-			Debug.WriteLine("AndroidSynchronization, calling GetInterfaceStackWillUse()");
+			// Determine which interface the network stack will use, and save its key data in
+			// the result object 'IfaceWinner'.
 			GetInterfaceStackWillUse(parent);
-			//Debug.WriteLine("AndroidSynchronization, local IP = " + IfaceWinner.IpAddr + " (" + IfaceWinner.Type + ")");
-			Debug.WriteLine("AndroidSynchronization, local IP = {0} ({1})", IfaceWinner.IpAddr, IfaceWinner.Type);
-			//var address = GetNetworkAddress(parent);
-			var address = IfaceWinner.IpAddr;
 
-			if (address == null)   // do we really need this?
+			if (IfaceWinner.IpAddr == null)
+			{
+				Debug.WriteLine("AndroidSynchronization, local IP not found");
 				return;
+			}
+
+			var address = IfaceWinner.IpAddr;
+			Debug.WriteLine("AndroidSynchronization, local IP = {0} ({1})", IfaceWinner.IpAddr, IfaceWinner.Type);
 
 			dlg.SetOurIpAddress(address.ToString());
 			dlg.ShowAndroidIpAddress(); // AFTER we set our IP address, which may be used to provide a default
@@ -200,7 +192,6 @@ namespace HearThis.Communication
 							break;
 						}
 					}
-
 					dlg.ProgressBox.WriteError(msg);
 				}
 			};
@@ -210,14 +201,12 @@ namespace HearThis.Communication
 		private static void GetInterfaceStackWillUse(Form parent)
 		{
 			int currentIfaceMetric;
-			//int maxInt = int.MaxValue;
 
 			// Initialize result struct's metric field to the highest possible value
 			// so the first interface metric value seen will always replace it.
 			IfaceWinner.Metric = int.MaxValue;
-			//IfaceWinner.Metric = maxInt;
 
-			// Retrieve all network interfaces that are *active*
+			// Retrieve all network interfaces that are *active*.
 			var allOperationalNetworks = NetworkInterface.GetAllNetworkInterfaces()
 				.Where(ni => ni.OperationalStatus == OperationalStatus.Up).ToArray();
 
@@ -227,7 +216,6 @@ namespace HearThis.Communication
 					"Android synchronization requires your computer to have networking enabled."),
 					Program.kProduct);
 				Debug.WriteLine("AndroidSynchronization, no network interfaces are operational");
-				//return null;
 				return;
 			}
 
@@ -246,7 +234,7 @@ namespace HearThis.Communication
 					continue;
 				}
 
-				Debug.WriteLine("AndroidSynchronization, checking IP addresses in " + ni.Name);
+				//Debug.WriteLine("AndroidSynchronization, checking IP addresses in " + ni.Name);
 				foreach (UnicastIPAddressInformation ip in ipProps.UnicastAddresses)
 				{
 					// We don't consider IPv6 so filter for IPv4 ('InterNetwork')
@@ -259,7 +247,6 @@ namespace HearThis.Communication
 						if (currentIfaceMetric < IfaceWinner.Metric)
 						{
 							IfaceWinner.IpAddr = ip.Address.ToString();
-							//IfaceWinner.NetMask = ip.IPv4Mask.ToString();
 							IfaceWinner.Type = ni.NetworkInterfaceType.ToString();
 							IfaceWinner.Metric = currentIfaceMetric;
 						}
@@ -334,65 +321,7 @@ namespace HearThis.Communication
 			{
 				Marshal.FreeHGlobal(tableBuf);
 			}
-
 			return bestMetric;
 		}
-
-		// WM, DEBUG ONLY
-		// Ported from temporary Bloom dev code: broadcast_address_buildup_test_02.cs
-		// Unlike for BloomDesktop, HearThis doesn't need to identify which network interface is being
-		// used because HearThis won't be transmitting on it to share its local IP. The QR code does
-		// that instead. Still, it is interesting (and likely helpful) to see the available network
-		// interfaces and their main attributes.
-		//
-		private static void ShowNetworkInterfaces()
-		{
-			Debug.WriteLine("AndroidSynchronization, ShowNetworkInterfaces:");
-
-			// index i: initialize to 1 less than usual so its increment can occur at the
-			//          top of a loop, and thus not get missed after a 'continue'
-			int i = -1;
-
-			foreach (NetworkInterface nic in NetworkInterface.GetAllNetworkInterfaces())
-			{
-				Debug.WriteLine("  ----------");
-				i++;
-				Debug.WriteLine("  nic[" + i + "].Name = " + nic.Name);
-				Debug.WriteLine("  nic[" + i + "].Id   = " + nic.Id);
-				Debug.WriteLine("  nic[" + i + "].Description = " + nic.Description);
-				Debug.WriteLine("  nic[" + i + "].NetworkInterfaceType = " + nic.NetworkInterfaceType);
-				Debug.WriteLine("  nic[" + i + "].OperationalStatus = " + nic.OperationalStatus);
-				Debug.WriteLine("  nic[" + i + "].Speed = " + nic.Speed);
-
-				if (!nic.Supports(NetworkInterfaceComponent.IPv6))
-				{
-					Debug.WriteLine("    does not support IPv6"); // on my machine only Wi-Fi has this
-				}
-				if (!nic.Supports(NetworkInterfaceComponent.IPv4))
-				{
-					Debug.WriteLine("    does not support IPv4"); // on my machine none show this
-					continue;
-				}
-
-				IPInterfaceProperties ipProps = nic.GetIPProperties();
-				IPv4InterfaceProperties ipPropsV4 = ipProps.GetIPv4Properties();
-				if (ipPropsV4 == null)
-				{
-					Debug.WriteLine("    IPv4 information not available"); // on my machine none show this
-					continue;
-				}
-
-				// Show all IP addresses held by this network interface. Also show all
-				// IPv4 netmasks. Note that IPv4 netmasks contain all zeroes for IPv6
-				// addresses (which we don't use).
-				foreach (UnicastIPAddressInformation addr in ipProps.UnicastAddresses)
-				{
-					Debug.WriteLine("  nic[" + i + "], ipProps.addr.Address  = " + addr.Address.ToString());
-					Debug.WriteLine("  nic[" + i + "], ipProps.addr.IPv4Mask = " + addr.IPv4Mask);
-				}
-			}
-			Debug.WriteLine("AndroidSynchronization, ShowNetworkInterfaces: DONE");
-		}
-		// WM, END DEBUG
 	}
 }
