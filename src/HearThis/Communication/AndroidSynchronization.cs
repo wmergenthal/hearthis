@@ -54,7 +54,7 @@ namespace HearThis.Communication
 			public int dwForwardMetric5;
 		}
 
-		// Holds a copy of the IPv4 routing table, which we will examine
+		// Hold a copy of the IPv4 routing table, which we will examine
 		// to find which row/route has the lowest "interface metric".
 		[StructLayout(LayoutKind.Sequential)]
 		private struct MIB_IPFORWARDTABLE
@@ -69,18 +69,27 @@ namespace HearThis.Communication
 		[DllImport("iphlpapi.dll", SetLastError = true)]
 		static extern int GetIpForwardTable(IntPtr pIpForwardTable, ref int pdwSize, bool bOrder);
 
-		// Holds relevant network interface attributes.
+		// Hold relevant network interface attributes.
 		private class InterfaceInfo
 		{
-			public string IpAddr  { get; set; }
-			public string Type    { get; set; }
-			public int Metric     { get; set; }
+			public string IpAddr      { get; set; }
+			public string Type        { get; set; }
+			public string Description {	get; set; }
+			public int Metric         { get; set; }
 		}
 
-		// Holds the current network interface candidate. After all interfaces are
-		// checked this will hold the one having the lowest interface metric (the
-		// "winner") which is the one Windows will choose for network traffic.
-		static InterfaceInfo IfaceWinner = new InterfaceInfo();
+		// Hold the current network interface candidates, one for Wi-Fi and one
+		// for Ethernet.
+		static InterfaceInfo IfaceWifi = new InterfaceInfo();
+		static InterfaceInfo IfaceEthernet = new InterfaceInfo();
+
+		// Possible results from network interface assessment.
+		enum CommTypeToExpect
+		{
+			None = 0,
+			WiFi = 1,
+			Ethernet = 2
+		}
 
 		public static void DoAndroidSync(Project project, Form parent)
 		{
@@ -95,20 +104,29 @@ namespace HearThis.Communication
 			}
 			var dlg = new AndroidSyncDialog();
 
-			// Determine which interface the network stack will use, and save its key data in
-			// the result object 'IfaceWinner'.
-			GetInterfaceStackWillUse(parent);
+			// Determine which interface the network stack will use.
+			CommTypeToExpect ifcResult = GetInterfaceStackWillUse(parent);
 
-			if (IfaceWinner.IpAddr == null)
+			if (ifcResult == CommTypeToExpect.None)
 			{
 				Debug.WriteLine("AndroidSynchronization, local IP not found");
 				return;
 			}
 
-			var address = IfaceWinner.IpAddr;
-			Debug.WriteLine("AndroidSynchronization, local IP = {0} ({1})", IfaceWinner.IpAddr, IfaceWinner.Type);
+			string address = "";
 
-			dlg.SetOurIpAddress(address.ToString());
+			if (ifcResult == CommTypeToExpect.WiFi)
+			{
+				address = IfaceWifi.IpAddr;
+				Debug.WriteLine("AndroidSynchronization, local IP = {0} ({1})", IfaceWifi.IpAddr, IfaceWifi.Type);
+			}
+			else
+			{
+				address = IfaceEthernet.IpAddr;
+				Debug.WriteLine("AndroidSynchronization, local IP = {0} ({1})", IfaceEthernet.IpAddr, IfaceEthernet.Type);
+			}
+
+			dlg.SetOurIpAddress(address);
 			dlg.ShowAndroidIpAddress(); // AFTER we set our IP address, which may be used to provide a default
 			dlg.GotSync += (o, args) =>
 			{
@@ -198,13 +216,23 @@ namespace HearThis.Communication
 			dlg.Show(parent);
 		}
 
-		private static void GetInterfaceStackWillUse(Form parent)
+		// Survey the network interfaces and determine which one, if any, the network stack
+		// will use for network traffic.
+		//   - During the assessment the current leading WiFi candidate will be held in
+		//     'IfaceWifi', and similarly the current best candidate for Ethernet will be
+		//     in 'IfaceEthernet'.
+		//   - After assessment inform calling code of the winner by returning an enum
+		//     indicating which of the candidate structs to draw from: WiFi, Ethernet,
+		//     or neither.
+		//
+		private static CommTypeToExpect GetInterfaceStackWillUse(Form parent)
 		{
 			int currentIfaceMetric;
 
-			// Initialize result struct's metric field to the highest possible value
+			// Initialize result structs metric field to the highest possible value
 			// so the first interface metric value seen will always replace it.
-			IfaceWinner.Metric = int.MaxValue;
+			IfaceWifi.Metric = int.MaxValue;
+			IfaceEthernet.Metric = int.MaxValue;
 
 			// Retrieve all network interfaces that are *active*.
 			var allOperationalNetworks = NetworkInterface.GetAllNetworkInterfaces()
@@ -216,7 +244,7 @@ namespace HearThis.Communication
 					"Android synchronization requires your computer to have networking enabled."),
 					Program.kProduct);
 				Debug.WriteLine("AndroidSynchronization, no network interfaces are operational");
-				return;
+				return CommTypeToExpect.None;
 			}
 
 			// Get key attributes of active network interfaces.
@@ -234,25 +262,75 @@ namespace HearThis.Communication
 					continue;
 				}
 
-				//Debug.WriteLine("AndroidSynchronization, checking IP addresses in " + ni.Name);
+				Debug.WriteLine("AndroidSynchronization, checking IP addresses in " + ni.Name);  // TEMPORARY
 				foreach (UnicastIPAddressInformation ip in ipProps.UnicastAddresses)
 				{
-					// We don't consider IPv6 so filter for IPv4 ('InterNetwork')
+					// We don't consider IPv6 so filter for IPv4 ('InterNetwork')...
 					if (ip.Address.AddressFamily == AddressFamily.InterNetwork)
 					{
-						currentIfaceMetric = GetMetricForInterface(ipv4Props.Index);
-
-						// If this interface's metric is lower than what we've seen
-						// so far, save it and its relevant associated values.
-						if (currentIfaceMetric < IfaceWinner.Metric)
+						// ...And of these we care only about WiFi and Ethernet.
+						if (ni.NetworkInterfaceType == NetworkInterfaceType.Wireless80211)
 						{
-							IfaceWinner.IpAddr = ip.Address.ToString();
-							IfaceWinner.Type = ni.NetworkInterfaceType.ToString();
-							IfaceWinner.Metric = currentIfaceMetric;
+							Debug.WriteLine("  WiFi...");  // TEMPORARY
+							currentIfaceMetric = GetMetricForInterface(ipv4Props.Index);
+
+							// Save this interface if its metric is lowest we've seen so far.
+							if (currentIfaceMetric < IfaceWifi.Metric)
+							{
+								Debug.WriteLine("  updating WiFi metric to " + currentIfaceMetric);  // TEMPORARY
+								IfaceWifi.IpAddr = ip.Address.ToString();
+								IfaceWifi.Type = ni.NetworkInterfaceType.ToString();
+								IfaceWifi.Description = ni.Description;
+								IfaceWifi.Metric = currentIfaceMetric;
+							}
+						}
+						else if (ni.NetworkInterfaceType == NetworkInterfaceType.Ethernet)
+						{
+							Debug.WriteLine("  Ethernet...");  // TEMPORARY
+							currentIfaceMetric = GetMetricForInterface(ipv4Props.Index);
+
+							// Save this interface if its metric is lowest we've seen so far.
+							if (currentIfaceMetric < IfaceEthernet.Metric)
+							{
+								Debug.WriteLine("  updating Ethernet metric to " + currentIfaceMetric);  // TEMPORARY
+								IfaceEthernet.IpAddr = ip.Address.ToString();
+								IfaceEthernet.Type = ni.NetworkInterfaceType.ToString();
+								IfaceEthernet.Description = ni.Description;
+								IfaceEthernet.Metric = currentIfaceMetric;
+							}
 						}
 					}
 				}
 			}
+
+			// Active network interfaces have all been assessed.
+			//   - The WiFi interface having the lowest metric has been saved in the
+			//     WiFi result struct. Note: if no active WiFi interface was seen then
+			//     the result struct's metric field will still have its initial value.
+			//   - Likewise for Ethernet.
+			// Now choose the winner, if there is one:
+			//   - If we saw an active WiFi interface, return that
+			//   - Else if we saw an active Ethernet interface, return that
+			//   - Else there is no winner so return none
+			if (IfaceWifi.Metric < int.MaxValue)
+			{
+				Debug.WriteLine("WiFi wins, interface = " + IfaceWifi.Description);  // TEMPORARY
+				Logger.WriteEvent("Found " +
+				$"a network for Android synchronization: " + IfaceWifi.Description);
+				return CommTypeToExpect.WiFi;
+			}
+			if (IfaceEthernet.Metric < int.MaxValue)
+			{
+				Debug.WriteLine("Ethernet wins, interface = " + IfaceEthernet.Description);  // TEMPORARY
+				Logger.WriteEvent("Found " +
+				$"a network for Android synchronization: " + IfaceEthernet.Description);
+				return CommTypeToExpect.Ethernet;
+			}
+
+			MessageBox.Show(parent, LocalizationManager.GetString("AndroidSynchronization.NoInterNetworkIPAddress",
+				"Sorry, your network adapter has no InterNetwork IP address. If you do not know how to resolve this, please seek technical help.",
+				Program.kProduct));
+			return CommTypeToExpect.None;
 		}
 
 		// Get a key piece of info ("metric") from the specified network interface.
