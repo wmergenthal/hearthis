@@ -8,6 +8,7 @@
 #endregion
 // --------------------------------------------------------------------------------------------
 using System;
+using System.Diagnostics;
 using System.Drawing;
 using System.Net;
 using System.Net.Sockets;
@@ -63,6 +64,7 @@ namespace HearThis.UI
 		public void SetOurIpAddress(string content)
 		{
 			_ourIpAddress = content;
+			Debug.WriteLine("WM, SetOurIpAddress, _ourIpAddress = " + _ourIpAddress); // TEMPORARY
 			var writer = new BarcodeWriter
 			{
 				Format = BarcodeFormat.QR_CODE,
@@ -83,6 +85,7 @@ namespace HearThis.UI
 			if (AndroidIpAddress != null)
 			{
 				_ipAddressBox.Text = AndroidIpAddress;
+				Debug.WriteLine("WM, ShowAndroidIpAddress, AndroidIpAddress = " + AndroidIpAddress); // TEMPORARY
 			}
 			else if (_ourIpAddress != null)
 			{
@@ -181,10 +184,13 @@ namespace HearThis.UI
 				if (_listener != null)
 				{
 					IPEndPoint groupEP = new IPEndPoint(IPAddress.Any, 0);
+					Debug.WriteLine("WM, ListenForUDPPackages, local IP = " + groupEP.Address); // TEMPORARY
 
 					try
 					{
 						byte[] bytes = _listener.Receive(ref groupEP); // waits for packet from Android.
+						Debug.WriteLine("WM, ListenForUDPPackages, got packet:"); // TEMPORARY
+						Debug.WriteLine("   " + Encoding.UTF8.GetString(bytes)); // TEMPORARY
 
 						//raise event
 						NewMessageReceived(this, new MyMessageArgs(bytes));
@@ -224,6 +230,7 @@ namespace HearThis.UI
 		private void _syncButton_Click(object sender, EventArgs e)
 		{
 			AndroidIpAddress = _ipAddressBox.Text;
+			Debug.WriteLine("WM, _syncButton_Click, AndroidIpAddress = " + AndroidIpAddress); // TEMPORARY
 			if (AndroidIpAddress.Contains("?"))
 			{
 				MessageBox.Show(
